@@ -47,7 +47,10 @@ CONTROLNET_WEIGHTS = {
 # Inizializzazione del modello base SD 1.5
 print("Inizializzazione dell'architettura del modello...")
 model = create_model('./models/cldm_v15.yaml').cpu()
-model = model.cuda()
+# IMPORTANTE: convertiamo in float16 per allineare la precisione al notebook (diffusers torch_dtype=float16).
+# I null-text ottimizzati sono calibrati sulle predizioni del modello in fp16:
+# usarli con un modello fp32 produce risultati divergenti.
+model = model.half().cuda()
 ddim_sampler = DDIMSampler(model)
 
 CURRENT_LOADED_MODEL = None
@@ -160,23 +163,24 @@ def process_word_swap(input_image, source_prompt, target_prompt, control_type, t
 
         actual_strength = 0.0 if control_type == "Nessuno (SD Base)" else strength
 
-        # MODIFICA 2: Caricamento sicuro dei tensori con conversione float32 e bypass del tokenizer
-        # MODIFICA 2: Caricamento tensori e passaggio della LISTA INTERA per l'iniezione step-by-step
+        # Caricamento null-text ottimizzati e x_T.
+        # Li manteniamo nella stessa precisione del modello (float16) per coerenza
+        # con il notebook dove sono stati ottimizzati in fp16.
+        model_dtype = next(model.parameters()).dtype  # float16 dopo model.half()
+
         raw_null_texts = torch.load('optimized_null_texts.pt', map_location='cuda')
-        
+
         if isinstance(raw_null_texts, list):
-            # Convertiamo in float32 e MANTENIAMO LA LISTA (niente più [-1])
-            uncond_embeddings = [t.float() for t in raw_null_texts]
-            
-            # Se num_samples > 1, adattiamo ogni singolo tensore della lista alla dimensione del batch
+            uncond_embeddings = [t.to(model_dtype) for t in raw_null_texts]
+
             if uncond_embeddings[0].size(0) == 1 and num_samples > 1:
                 uncond_embeddings = [t.repeat(num_samples, 1, 1) for t in uncond_embeddings]
         else:
-            uncond_embeddings = raw_null_texts.float()
+            uncond_embeddings = raw_null_texts.to(model_dtype)
             if uncond_embeddings.size(0) == 1 and num_samples > 1:
                 uncond_embeddings = uncond_embeddings.repeat(num_samples, 1, 1)
 
-        x_T_S = torch.load('trajectory_xT.pt', map_location='cuda').float()
+        x_T_S = torch.load('trajectory_xT.pt', map_location='cuda').to(model_dtype)
         
         # Ora passiamo la LISTA INTERA dentro il dizionario. 
         # Il nuovo ddim_hacked.py la spacchetterà e prenderà l'elemento [i] ad ogni step.
@@ -190,7 +194,9 @@ def process_word_swap(input_image, source_prompt, target_prompt, control_type, t
         attention_mod.P2P_READ_MODE = True
         attention_mod.P2P_INJECT_MODE = False
         
-        cond_source = {"c_concat": [control], "c_crossattn": [model.get_learned_conditioning([source_prompt + ', ' + a_prompt] * num_samples)]}
+        # Costruzione prompt: evitiamo trailing ", " se a_prompt è vuoto
+        full_source_prompt = (source_prompt + ', ' + a_prompt) if a_prompt else source_prompt
+        cond_source = {"c_concat": [control], "c_crossattn": [model.get_learned_conditioning([full_source_prompt] * num_samples)]}
         
         samples_source, _ = ddim_sampler.sample(ddim_steps, num_samples, shape, cond_source, verbose=False, eta=eta,
                                                 unconditional_guidance_scale=scale, unconditional_conditioning=un_cond, x_T=x_T_S)
@@ -212,7 +218,8 @@ def process_word_swap(input_image, source_prompt, target_prompt, control_type, t
         attention_mod.P2P_INJECT_MODE = True
         attention_mod.P2P_INJECT_INDEX = 0
         
-        cond_target = {"c_concat": [control], "c_crossattn": [model.get_learned_conditioning([target_prompt + ', ' + a_prompt] * num_samples)]}
+        full_target_prompt = (target_prompt + ', ' + a_prompt) if a_prompt else target_prompt
+        cond_target = {"c_concat": [control], "c_crossattn": [model.get_learned_conditioning([full_target_prompt] * num_samples)]}
         
         samples_target, _ = ddim_sampler.sample(ddim_steps, num_samples, shape, cond_target, verbose=False, eta=eta,
                                                 unconditional_guidance_scale=scale, unconditional_conditioning=un_cond, x_T=x_T_S)

@@ -24,7 +24,7 @@ apply_hed = HEDdetector()
 
 model = create_model('./models/cldm_v15.yaml').cpu()
 model.load_state_dict(load_state_dict('./models/control_sd15_scribble.pth', location='cuda'), strict=False)
-model = model.cuda()
+model = model.half().cuda()
 ddim_sampler = DDIMSampler(model)
 
 def create_heatmap(attn_map, original_shape=(512, 512)):
