@@ -273,11 +273,11 @@ with block:
                 mlsd_value_threshold = gr.Slider(label="MLSD Value Threshold", minimum=0.01, maximum=2.0, value=0.1, step=0.01)
                 mlsd_distance_threshold = gr.Slider(label="MLSD Distance Threshold", minimum=0.01, maximum=20.0, value=0.1, step=0.01)
                 
-                ddim_steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=20, step=1)
-                scale = gr.Slider(label="Guidance Scale", minimum=0.1, maximum=30.0, value=9.0, step=0.1)
+                ddim_steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=50, step=1)
+                scale = gr.Slider(label="Guidance Scale", minimum=0.1, maximum=30.0, value=7.5, step=0.1)
                 seed = gr.Slider(label="Seed", minimum=-1, maximum=2147483647, step=1, randomize=True)
                 eta = gr.Number(label="eta (DDIM)", value=0.0)
-                a_prompt = gr.Textbox(label="Added Prompt", value='best quality, extremely detailed')
+                a_prompt = gr.Textbox(label="Added Prompt", value='')
                 n_prompt = gr.Textbox(label="Negative Prompt", value='longbody, lowres, bad anatomy, bad hands, missing fingers')
                 
         with gr.Column():
